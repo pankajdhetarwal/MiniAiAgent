@@ -1,0 +1,7 @@
+langchain_community>=0.4
+langchain_text_splitters>=1.1
+openai>=3.24
+pypdf>=6.19
+pymongo>=4.18
+python-dotenv>=1.2
+voyageai>=0.5
