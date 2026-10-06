@@ -1,10 +1,10 @@
 import ast
 import operator as op
-from config import vector_collection
+from config import vector_collection, cohere_client, COHERE_RERANK_MODEL
 from ingest_data import get_embedding
 
 
-# Define a vector search tool
+# Define a vector search tool — retrieves top 20 candidates for reranking
 def vector_search_tool(user_input: str) -> list:
     query_embedding = get_embedding(user_input, input_type="query")
     pipeline = [
@@ -14,14 +14,14 @@ def vector_search_tool(user_input: str) -> list:
                 "queryVector": query_embedding,
                 "path": "embedding",
                 "exact": True,
-                "limit": 5,
+                "limit": 20,  # fetch more candidates for reranking
             }
         },
         {
             "$project": {
                 "_id": 0,
                 "text": 1,
-                "score": {"$meta": "vectorSearchScore"},  # needed later for the groundedness check
+                "score": {"$meta": "vectorSearchScore"},
             }
         },
     ]
@@ -31,6 +31,38 @@ def vector_search_tool(user_input: str) -> list:
     for doc in results:
         array_of_results.append(doc)
     return array_of_results
+
+
+# Rerank results using Cohere's cross-encoder model
+def rerank_results(query: str, documents: list, top_n: int = 5) -> list:
+    """
+    Takes the raw vector search results and reranks them using Cohere's
+    rerank model. Returns the top_n most relevant documents.
+    """
+    if not documents:
+        return []
+
+    # Extract text from documents for reranking
+    doc_texts = [doc["text"] for doc in documents]
+
+    response = cohere_client.rerank(
+        model=COHERE_RERANK_MODEL,
+        query=query,
+        documents=doc_texts,
+        top_n=top_n,
+    )
+
+    # Build reranked results with Cohere relevance scores
+    reranked = []
+    for result in response.results:
+        original_doc = documents[result.index]
+        reranked.append({
+            "text": original_doc["text"],
+            "vector_score": original_doc.get("score", 0),
+            "rerank_score": result.relevance_score,
+        })
+
+    return reranked
 
 
 # Safe arithmetic evaluator — only numbers and +, -, *, /, ** are allowed.
@@ -65,4 +97,4 @@ def calculator_tool(user_input: str) -> str:
         result = _safe_eval(tree.body)
         return str(result)
     except Exception as e:
-        return f"Error: {str(e)}"
+        return f"Error: {str(e)}"

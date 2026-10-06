@@ -2,23 +2,25 @@ from config import vector_collection, voyage_client, VOYAGE_MODEL
 from pymongo.operations import SearchIndexModel
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from voyageai.error import APIConnectionError
+from voyageai.error import APIConnectionError, RateLimitError
 import time
 
 
-# Define a function to generate embeddings, with retry handling for dropped connections
-def get_embeddings(data, input_type="document", max_retries=3):
+# Define a function to generate embeddings, with retry handling for dropped connections and rate limits
+def get_embeddings(data, input_type="document", max_retries=5):
     for attempt in range(max_retries):
         try:
             return voyage_client.embed(
                 data, model=VOYAGE_MODEL, input_type=input_type
             ).embeddings
-        except APIConnectionError as e:
+        except (APIConnectionError, RateLimitError) as e:
             if attempt == max_retries - 1:
                 print(f"Embedding request failed after {max_retries} attempts: {e}")
                 raise
-            wait = 15 * (attempt + 1)  # 15s, 30s, 45s
-            print(f"Connection dropped (attempt {attempt + 1}/{max_retries}), retrying in {wait}s...")
+            
+            # RateLimitError requires a longer wait (60s resets the 1-minute window)
+            wait = 60 if isinstance(e, RateLimitError) else 15 * (attempt + 1)
+            print(f"Voyage AI Error (attempt {attempt + 1}/{max_retries}): {type(e).__name__}. Retrying in {wait}s...")
             time.sleep(wait)
 
 

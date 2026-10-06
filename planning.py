@@ -1,6 +1,6 @@
 import json
 from config import openai_client, OPENAI_MODEL
-from tools import vector_search_tool, calculator_tool
+from tools import vector_search_tool, rerank_results, calculator_tool
 from memory import (
     store_chat_message,
     retrieve_session_history,
@@ -84,7 +84,14 @@ def generate_response(session_id: str, user_input: str) -> str:
 
     # Process based on selected tool
     if tool == "vector_search_tool":
-        context = vector_search_tool(tool_input)
+        # Step 1: Vector search retrieves top 20 candidates
+        raw_results = vector_search_tool(tool_input)
+        print(f"  Vector search returned {len(raw_results)} candidates")
+
+        # Step 2: Cohere reranker narrows to top 5
+        context = rerank_results(tool_input, raw_results, top_n=5)
+        print(f"  Reranked to top {len(context)} results")
+
         system_message_content = (
             f"Answer the user's question based on the retrieved context and conversation history.\n"
             f"1. First, understand what specific information the user is requesting\n"
