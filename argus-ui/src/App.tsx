@@ -21,7 +21,36 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId] = useState(`session-${Math.random().toString(36).substring(7)}`);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isEvalOpen, setIsEvalOpen] = useState(false);
+  const [isImpactOpen, setIsImpactOpen] = useState(false);
+  
+  const [isEvaluating, setIsEvaluating] = useState(false);
+  const [evalMetrics, setEvalMetrics] = useState({
+    faithfulness: 42,
+    answer_relevancy: 82,
+    context_precision_after: 35,
+    context_precision_before: 27,
+    hallucination_block_rate: 100
+  });
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const handleLiveEvaluation = async () => {
+    setIsEvaluating(true);
+    try {
+      const response = await fetch('http://localhost:8000/api/evaluate', {
+        method: 'POST',
+      });
+      const data = await response.json();
+      if (data.status === 'success') {
+        setEvalMetrics(data.metrics);
+      }
+    } catch (error) {
+      console.error("Evaluation failed", error);
+    } finally {
+      setIsEvaluating(false);
+    }
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -72,6 +101,18 @@ function App() {
           <h1>Argus Agent</h1>
         </div>
         <div className="header-badges">
+          <button className="architecture-btn impact-btn" onClick={() => setIsImpactOpen(true)}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M13 10V3L4 14H11V21L20 10H13Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            Reranker Impact
+          </button>
+          <button className="architecture-btn eval-btn" onClick={() => setIsEvalOpen(true)}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M18 20V10M12 20V4M6 20V14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            Live Evaluation
+          </button>
           <button className="architecture-btn" onClick={() => setIsModalOpen(true)}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" stroke="currentColor" strokeWidth="2"/>
@@ -221,6 +262,102 @@ function App() {
                   <p>Llama 3.2 generates the final answer strictly bounded by the gated context.</p>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isEvalOpen && (
+        <div className="modal-overlay" onClick={() => setIsEvalOpen(false)}>
+          <div className="modal-content eval-modal" onClick={e => e.stopPropagation()}>
+            <button className="close-modal" onClick={() => setIsEvalOpen(false)}>×</button>
+            <h2>System Evaluation</h2>
+            <p className="modal-subtitle">RAGAS Framework Metrics</p>
+            
+            <div className="eval-actions" style={{ textAlign: 'center', marginBottom: '2rem' }}>
+              <button 
+                className="architecture-btn" 
+                onClick={handleLiveEvaluation}
+                disabled={isEvaluating}
+                style={{ 
+                  background: isEvaluating ? 'rgba(255,255,255,0.1)' : 'var(--accent-primary)',
+                  color: isEvaluating ? '#888' : '#fff',
+                  border: 'none',
+                  padding: '0.75rem 2rem'
+                }}
+              >
+                {isEvaluating ? 'Running Live Evaluation (~30s)...' : 'Evaluate Argus (Live)'}
+              </button>
+            </div>
+            
+            <div className="eval-grid">
+              <div className="eval-card">
+                <div className="eval-score">{evalMetrics.answer_relevancy}%</div>
+                <div className="eval-name">Answer Relevancy</div>
+                <div className="eval-desc">How directly the response answers the user's question.</div>
+              </div>
+              <div className="eval-card">
+                <div className="eval-score">{evalMetrics.faithfulness}%</div>
+                <div className="eval-name">Faithfulness</div>
+                <div className="eval-desc">Measures how strictly grounded the answer is in the context.</div>
+              </div>
+              <div className="eval-card">
+                <div className="eval-score">{evalMetrics.context_precision_after}%</div>
+                <div className="eval-name">Context Precision</div>
+                <div className="eval-desc">Signal-to-noise ratio of chunks retrieved by Hybrid Search.</div>
+              </div>
+              <div className="eval-card highlight-card">
+                <div className="eval-score">{evalMetrics.hallucination_block_rate}%</div>
+                <div className="eval-name">Hallucination Block Rate</div>
+                <div className="eval-desc">Out-of-domain queries caught by the Groundedness Gate (Threshold 0.50).</div>
+              </div>
+            </div>
+
+            <div className="eval-metadata">
+              <p><strong>Judge Model:</strong> Groq Llama-3.1-120B</p>
+              <p><strong>Embeddings:</strong> BAAI/bge-base-en-v1.5</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isImpactOpen && (
+        <div className="modal-overlay" onClick={() => setIsImpactOpen(false)}>
+          <div className="modal-content impact-modal" onClick={e => e.stopPropagation()}>
+            <button className="close-modal" onClick={() => setIsImpactOpen(false)}>×</button>
+            <h2>Reranker Impact</h2>
+            <p className="modal-subtitle">Cohere Cross-Encoder Performance Boost</p>
+            
+            <div className="impact-comparison">
+              <div className="impact-side before">
+                <h3>Before Reranking</h3>
+                <div className="impact-score">{evalMetrics.context_precision_before}%</div>
+                <p>Context Precision</p>
+                <div className="impact-details">
+                  Raw Hybrid Search (Top 20)<br/>
+                  <small>Basic Vector + BM25 Fusion</small>
+                </div>
+              </div>
+              
+              <div className="impact-arrow">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </div>
+              
+              <div className="impact-side after">
+                <h3>After Reranking</h3>
+                <div className="impact-score">{evalMetrics.context_precision_after}%</div>
+                <p>Context Precision</p>
+                <div className="impact-details">
+                  Cohere Rerank-v3.5 (Top 5)<br/>
+                  <small>Semantic Cross-Encoder</small>
+                </div>
+              </div>
+            </div>
+
+            <div className="impact-explanation">
+              <p><strong>Why this matters:</strong> The Reranker analyzes the semantic relationship between the user's exact query and the retrieved chunks, floating the most contextually relevant documents to the top. This <strong>+{evalMetrics.context_precision_after - evalMetrics.context_precision_before}% absolute boost</strong> in Context Precision ensures the LLM generates answers from the highest-quality signal, significantly reducing hallucinations.</p>
             </div>
           </div>
         </div>

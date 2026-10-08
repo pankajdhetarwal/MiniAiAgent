@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from planning import generate_response_ui
 from memory import retrieve_session_history
+from live_eval import run_fast_live_eval
 import uvicorn
 
 app = FastAPI(title="Argus Agent API")
@@ -36,6 +37,18 @@ def history(session_id: str):
     """
     history_data = retrieve_session_history(session_id)
     return {"history": history_data}
+@app.post("/api/evaluate")
+def evaluate_agent():
+    """
+    Run a fast, live RAGAS evaluation on a subset of questions.
+    Returns metrics including before/after context precision.
+    """
+    try:
+        metrics = run_fast_live_eval()
+        return {"status": "success", "metrics": metrics}
+    except Exception as e:
+        print(f"Evaluation error: {e}")
+        return {"status": "error", "message": str(e)}
 
 if __name__ == "__main__":
     print("Starting Argus API Server on http://localhost:8000")
