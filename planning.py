@@ -1,6 +1,6 @@
 import json
 from config import openai_client, OPENAI_MODEL
-from tools import vector_search_tool, rerank_results, calculator_tool
+from tools import hybrid_search_tool, rerank_results, calculator_tool
 from memory import (
     store_chat_message,
     retrieve_session_history,
@@ -84,24 +84,32 @@ def generate_response(session_id: str, user_input: str) -> str:
 
     # Process based on selected tool
     if tool == "vector_search_tool":
-        # Step 1: Vector search retrieves top 20 candidates
-        raw_results = vector_search_tool(tool_input)
-        print(f"  Vector search returned {len(raw_results)} candidates")
+        # Step 1: Hybrid search retrieves top 20 combined candidates
+        raw_results = hybrid_search_tool(tool_input)
+        print(f"  Hybrid search returned {len(raw_results)} candidates")
 
         # Step 2: Cohere reranker narrows to top 5
         context = rerank_results(tool_input, raw_results, top_n=5)
         print(f"  Reranked to top {len(context)} results")
 
-        system_message_content = (
-            f"Answer the user's question based on the retrieved context and conversation history.\n"
-            f"1. First, understand what specific information the user is requesting\n"
-            f"2. Then, locate the most relevant details in the context provided\n"
-            f"3. Finally, provide a clear, accurate response that directly addresses the question\n\n"
-            f"If the current question builds on previous exchanges, maintain continuity in your answer.\n"
-            f"Only state facts clearly supported by the provided context. If information is not available, say 'I DON'T KNOW'.\n\n"
-            f"Context:\n{context}"
-        )
-        response = get_llm_response(llm_input, system_message_content)
+        # Step 3: Groundedness Gate
+        # If the highest rerank score is below 0.3, we assume the document doesn't contain the answer.
+        GATE_THRESHOLD = 0.3
+        if not context or context[0].get("rerank_score", 0) < GATE_THRESHOLD:
+            top_score = context[0].get("rerank_score", 0) if context else 0
+            print(f"  [Groundedness Gate] Triggered. Top score ({top_score:.3f}) < {GATE_THRESHOLD}")
+            response = "I don't have enough information in the provided documents to answer that."
+        else:
+            system_message_content = (
+                f"Answer the user's question based on the retrieved context and conversation history.\n"
+                f"1. First, understand what specific information the user is requesting\n"
+                f"2. Then, locate the most relevant details in the context provided\n"
+                f"3. Finally, provide a clear, accurate response that directly addresses the question\n\n"
+                f"If the current question builds on previous exchanges, maintain continuity in your answer.\n"
+                f"Only state facts clearly supported by the provided context. If information is not available, say 'I DON'T KNOW'.\n\n"
+                f"Context:\n{context}"
+            )
+            response = get_llm_response(llm_input, system_message_content)
     elif tool == "calculator_tool":
         response = calculator_tool(tool_input)
     else:
@@ -135,3 +143,62 @@ def get_llm_response(messages, system_message_content):
     )
 
     return response
+
+
+# UI-specific version of generate_response that returns structured metadata
+def generate_response_ui(session_id: str, user_input: str) -> dict:
+    store_chat_message(session_id, "user", user_input)
+    
+    llm_input = []
+    session_history = retrieve_session_history(session_id)
+    llm_input.extend(session_history)
+    
+    user_message = {"role": "user", "content": user_input}
+    llm_input.append(user_message)
+    
+    tool, tool_input = tool_selector(user_input, session_history)
+    
+    ui_response = {
+        "answer": "",
+        "sources": [],
+        "gate_passed": True,
+        "tool_used": tool
+    }
+    
+    if tool == "vector_search_tool":
+        raw_results = hybrid_search_tool(tool_input)
+        context = rerank_results(tool_input, raw_results, top_n=5)
+        
+        # Populate UI sources with text and rerank scores
+        ui_response["sources"] = [
+            {"text": doc["text"], "rerank_score": doc.get("rerank_score", 0)}
+            for doc in context
+        ]
+        
+        GATE_THRESHOLD = 0.3
+        if not context or context[0].get("rerank_score", 0) < GATE_THRESHOLD:
+            ui_response["gate_passed"] = False
+            ui_response["answer"] = "I don't have enough information in the provided documents to answer that."
+            store_chat_message(session_id, "assistant", ui_response["answer"])
+            return ui_response
+            
+        system_message_content = (
+            f"Answer the user's question based on the retrieved context and conversation history.\n"
+            f"1. First, understand what specific information the user is requesting\n"
+            f"2. Then, locate the most relevant details in the context provided\n"
+            f"3. Finally, provide a clear, accurate response that directly addresses the question\n\n"
+            f"If the current question builds on previous exchanges, maintain continuity in your answer.\n"
+            f"Only state facts clearly supported by the provided context. If information is not available, say 'I DON'T KNOW'.\n\n"
+            f"Context:\n{context}"
+        )
+        answer = get_llm_response(llm_input, system_message_content)
+        ui_response["answer"] = answer
+        
+    elif tool == "calculator_tool":
+        ui_response["answer"] = calculator_tool(tool_input)
+    else:
+        system_message_content = "You are a helpful assistant. Respond to the user's prompt as best as you can based on the conversation history."
+        ui_response["answer"] = get_llm_response(llm_input, system_message_content)
+        
+    store_chat_message(session_id, "assistant", ui_response["answer"])
+    return ui_response

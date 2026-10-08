@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 
 # Import your agent's pipeline
 from planning import generate_response
-from tools import vector_search_tool, rerank_results
+from tools import hybrid_search_tool, rerank_results
 
 # Load environment variables
 load_dotenv()
@@ -37,17 +37,25 @@ evaluator_embeddings = GoogleGenerativeAIEmbeddings(
     google_api_key=os.getenv("GOOGLE_API_KEY"),
 )
 
-# Define test dataset based on the MongoDB Q4 FY2025 earnings report
+# Define test dataset based on the MongoDB Q4 FY2025 earnings report + out-of-domain tests
 test_questions = [
     "What was MongoDB's total revenue for the fourth quarter of fiscal 2025?",
     "How much did MongoDB Atlas revenue grow in the fourth quarter?",
     "What is the customer count for MongoDB as of January 31, 2025?",
+    # Out of domain / adversarial questions
+    "What is the recipe for chocolate chip cookies?",
+    "Who won the FIFA World Cup in 2022?",
+    "Can you summarize the plot of the movie Inception?"
 ]
 
 ground_truths = [
     "MongoDB's total revenue for the fourth quarter was $509.3 million.",
     "MongoDB Atlas revenue grew 30% year-over-year in the fourth quarter.",
     "MongoDB had over 54,100 customers as of January 31, 2025.",
+    # Out of domain ground truths
+    "I cannot answer this question based on the provided context.",
+    "I cannot answer this question based on the provided context.",
+    "I cannot answer this question based on the provided context."
 ]
 
 def run_evaluation():
@@ -77,7 +85,7 @@ def run_evaluation():
         time.sleep(25)
         
         # 2. Get the contexts that were retrieved
-        raw_results = vector_search_tool(question)
+        raw_results = hybrid_search_tool(question)
 
         if not raw_results:
             contexts = []

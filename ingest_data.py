@@ -57,10 +57,11 @@ def ingest_data():
     else:
         print("No documents were inserted. Check embedding generation process.")
 
-    # --- Create the vector search index ---
-    index_name = "vector_index"
+    # --- Create the vector and text search indices ---
+    vector_index_name = "vector_index"
+    text_index_name = "text_index"
 
-    search_index_model = SearchIndexModel(
+    vector_search_index_model = SearchIndexModel(
         definition={
             "fields": [
                 {
@@ -71,26 +72,40 @@ def ingest_data():
                 }
             ]
         },
-        name=index_name,
+        name=vector_index_name,
         type="vectorSearch",
     )
+    
+    text_search_index_model = SearchIndexModel(
+        definition={
+            "mappings": {
+                "dynamic": True
+            }
+        },
+        name=text_index_name,
+        type="search",
+    )
+    
     try:
-        vector_collection.create_search_index(model=search_index_model)
-        print(f"Search index '{index_name}' creation initiated.")
+        vector_collection.create_search_index(model=vector_search_index_model)
+        print(f"Search index '{vector_index_name}' creation initiated.")
+        vector_collection.create_search_index(model=text_search_index_model)
+        print(f"Search index '{text_index_name}' creation initiated.")
     except Exception as e:
         print(f"Error creating search index: {e}")
         return
 
     # Wait for initial sync to complete
-    print("Polling to check if the index is ready. This may take up to a minute.")
+    print("Polling to check if the indices are ready. This may take up to a minute.")
     predicate = lambda index: index.get("queryable") is True
 
     max_retries = 24  # ~2 minutes at 5s intervals
     for _ in range(max_retries):
-        indices = list(vector_collection.list_search_indexes(index_name))
-        if len(indices) and predicate(indices[0]):
+        v_indices = list(vector_collection.list_search_indexes(vector_index_name))
+        t_indices = list(vector_collection.list_search_indexes(text_index_name))
+        if len(v_indices) and predicate(v_indices[0]) and len(t_indices) and predicate(t_indices[0]):
             break
         time.sleep(5)
     else:
-        raise TimeoutError(f"Index '{index_name}' did not become queryable in time.")
-    print(index_name + " is ready for querying.")
+        raise TimeoutError("Indices did not become queryable in time.")
+    print("Vector and text search indices are ready for querying.")

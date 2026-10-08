@@ -4,32 +4,90 @@ from config import vector_collection, cohere_client, COHERE_RERANK_MODEL
 from ingest_data import get_embedding
 
 
-# Define a vector search tool — retrieves top 20 candidates for reranking
-def vector_search_tool(user_input: str) -> list:
-    query_embedding = get_embedding(user_input, input_type="query")
-    pipeline = [
-        {
-            "$vectorSearch": {
-                "index": "vector_index",
-                "queryVector": query_embedding,
-                "path": "embedding",
-                "exact": True,
-                "limit": 20,  # fetch more candidates for reranking
-            }
-        },
-        {
-            "$project": {
-                "_id": 0,
-                "text": 1,
-                "score": {"$meta": "vectorSearchScore"},
-            }
-        },
-    ]
-    results = vector_collection.aggregate(pipeline)
+# Define a hybrid search tool — retrieves candidates from both vector and text search, merges via RRF
+def hybrid_search_tool(user_input: str) -> list:
+    # 1. Vector Search
+    try:
+        query_embedding = get_embedding(user_input, input_type="query")
+        vector_pipeline = [
+            {
+                "$vectorSearch": {
+                    "index": "vector_index",
+                    "queryVector": query_embedding,
+                    "path": "embedding",
+                    "exact": True,
+                    "limit": 20,
+                }
+            },
+            {
+                "$project": {
+                    "_id": 1,
+                    "text": 1,
+                    "score": {"$meta": "vectorSearchScore"},
+                }
+            },
+        ]
+        vector_results = list(vector_collection.aggregate(vector_pipeline))
+    except Exception as e:
+        print(f"Vector search failed: {e}")
+        vector_results = []
 
+    # 2. Text Search
+    try:
+        text_pipeline = [
+            {
+                "$search": {
+                    "index": "text_index",
+                    "text": {
+                        "query": user_input,
+                        "path": "text"
+                    }
+                }
+            },
+            {
+                "$limit": 20
+            },
+            {
+                "$project": {
+                    "_id": 1,
+                    "text": 1,
+                    "score": {"$meta": "searchScore"},
+                }
+            }
+        ]
+        text_results = list(vector_collection.aggregate(text_pipeline))
+    except Exception as e:
+        print(f"Text search failed: {e}")
+        text_results = []
+
+    # 3. Reciprocal Rank Fusion (RRF)
+    # RRF score = sum(1 / (60 + rank))
+    rrf_scores = {}
+    docs_by_id = {}
+    
+    # Process vector results
+    for rank, doc in enumerate(vector_results):
+        doc_id = str(doc["_id"])
+        docs_by_id[doc_id] = doc["text"]
+        rrf_scores[doc_id] = rrf_scores.get(doc_id, 0) + (1.0 / (60 + rank))
+        
+    # Process text results
+    for rank, doc in enumerate(text_results):
+        doc_id = str(doc["_id"])
+        docs_by_id[doc_id] = doc["text"]
+        rrf_scores[doc_id] = rrf_scores.get(doc_id, 0) + (1.0 / (60 + rank))
+        
+    # Sort by RRF score descending
+    sorted_docs = sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True)
+    
+    # Return top 20 combined results
     array_of_results = []
-    for doc in results:
-        array_of_results.append(doc)
+    for doc_id, score in sorted_docs[:20]:
+        array_of_results.append({
+            "text": docs_by_id[doc_id],
+            "rrf_score": score
+        })
+        
     return array_of_results
 
 

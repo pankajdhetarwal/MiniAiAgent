@@ -111,13 +111,28 @@ The evaluation script (`evaluate_ragas.py`) measures three critical dimensions o
 - **Answer Relevancy (0.75):** Measures how well the generated answer addresses the user's initial query, using Cohere embeddings to penalize off-topic responses.
 - **Context Precision:** Measures the signal-to-noise ratio of the retrieved chunks. By implementing the **Cohere Reranker**, we ensure the top 5 chunks injected into the prompt are highly relevant, drastically reducing LLM confusion.
 
+## Enterprise Features
+
+### 1. Hybrid Search with Reciprocal Rank Fusion (RRF)
+Vector search is excellent for semantic meaning, but often fails on exact keyword matching (like specific product SKUs or names). 
+- Argus implements a **Hybrid Search** pipeline by running a Vector Search (`$vectorSearch`) and a Full-Text Keyword Search (`$search`) in parallel across MongoDB Atlas.
+- The two result sets are mathematically merged in Python using **Reciprocal Rank Fusion (RRF)**: `score = Σ 1/(60 + rank)`, ensuring documents that appear highly in both searches rise to the top.
+
+### 2. The Groundedness Gate
+To guarantee zero hallucinations on out-of-domain queries (e.g., "What is the recipe for cookies?"), Argus implements a pre-generation **Groundedness Gate**.
+- The top 20 hybrid search results are sent to Cohere's Rerank-v3.5 cross-encoder model.
+- If the absolute highest relevance score returned by the reranker is below our threshold (0.3), the system preemptively short-circuits.
+- It bypasses the generation LLM entirely and immediately responds: *"I don't have enough information in the provided documents to answer that."*
+
 ## Technology Stack
 
 | Component | Technology | Purpose |
 |---|---|---|
 | **LLM (Agent)** | Ollama / llama3.2 | Reasoning engine and response generation |
 | **LLM (Judge)** | Gemini / Ollama | RAGAS evaluation |
+| **Backend API** | FastAPI / Python | Exposes agent routes to the frontend |
+| **Frontend UI** | React / TypeScript | Premium sleek chat interface |
 | **Embeddings** | Voyage AI (`voyage-4-large`) | Text vectorization |
-| **Vector DB** | MongoDB Atlas | Similarity search and storage |
+| **Vector DB** | MongoDB Atlas | Semantic and Keyword Hybrid Search |
 | **Reranking** | Cohere (`rerank-v3.5`) | Precision context ranking |
 | **Frameworks** | LangChain & RAGAS | Text splitting, prompt formatting, evaluation |
