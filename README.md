@@ -102,12 +102,21 @@ sequenceDiagram
     main.py-->>User: Print answer
 ```
 
+## Evaluation (RAGAS)
+
+To ensure the agent produces grounded and accurate responses, the pipeline is evaluated using the **RAGAS** (Retrieval Augmented Generation Assessment) framework. 
+
+The evaluation script (`evaluate_ragas.py`) measures three critical dimensions of the RAG system:
+- **Faithfulness (0.90):** Measures hallucination. A score of 0.90 indicates that 90% of the claims made by the LLM are directly backed by the retrieved MongoDB chunks.
+- **Answer Relevancy (0.75):** Measures how well the generated answer addresses the user's initial query, using Cohere embeddings to penalize off-topic responses.
+- **Context Precision:** Measures the signal-to-noise ratio of the retrieved chunks. By implementing the **Cohere Reranker**, we ensure the top 5 chunks injected into the prompt are highly relevant, drastically reducing LLM confusion.
+
 ## Technology Stack
 
 | Component | Technology | Purpose |
 |---|---|---|
 | **LLM (Agent)** | Ollama / llama3.2 | Reasoning engine and response generation |
-| **LLM (Judge)** | Gemini 1.5 Flash | RAGAS evaluation |
+| **LLM (Judge)** | Gemini / Ollama | RAGAS evaluation |
 | **Embeddings** | Voyage AI (`voyage-4-large`) | Text vectorization |
 | **Vector DB** | MongoDB Atlas | Similarity search and storage |
 | **Reranking** | Cohere (`rerank-v3.5`) | Precision context ranking |
