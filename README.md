@@ -121,7 +121,7 @@ Vector search is excellent for semantic meaning, but often fails on exact keywor
 ### 2. The Groundedness Gate
 To guarantee zero hallucinations on out-of-domain queries (e.g., "What is the recipe for cookies?"), Argus implements a pre-generation **Groundedness Gate**.
 - The top 20 hybrid search results are sent to Cohere's Rerank-v3.5 cross-encoder model.
-- If the absolute highest relevance score returned by the reranker is below our threshold (0.3), the system preemptively short-circuits.
+- If the absolute highest relevance score returned by the reranker is below our empirically tuned threshold (0.50), the system preemptively short-circuits.
 - It bypasses the generation LLM entirely and immediately responds: *"I don't have enough information in the provided documents to answer that."*
 
 ## Technology Stack

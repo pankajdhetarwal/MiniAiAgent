@@ -11,4 +11,6 @@ langchain-openai>=0.3
 datasets>=3.0
 fastapi>=0.100
 uvicorn>=0.23
+sentence-transformers>=2.0
+langchain-groq>=1.0
 

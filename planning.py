@@ -15,14 +15,14 @@ def tool_selector(user_input, session_history=None):
             "content": (
                 "Select the appropriate tool from the options below. Consider the full context of the conversation before deciding.\n\n"
                 "Tools available:\n"
-                "- vector_search_tool: Retrieve specific context about recent MongoDB earnings and announcements\n"
+                "- vector_search_tool: Use this for ANY factual, informational, or knowledge-based question (even if it doesn't seem related to MongoDB).\n"
                 "- calculator_tool: For mathematical operations\n"
-                "- none: For general questions without additional context\n"
+                "- none: Use ONLY for simple conversational greetings and pleasantries (e.g., 'Hello', 'Hi', 'How are you?').\n"
                 "Process for making your decision:\n"
                 "1. Analyze if the current question relates to or follows up on a previous vector search query\n"
                 "2. For follow-up questions, incorporate context from previous exchanges to create a comprehensive search query\n"
                 "3. Only use calculator_tool for explicit mathematical operations\n"
-                "4. Default to none only when certain the other tools won't help\n\n"
+                "4. Default to none ONLY for greetings. ALL other questions must go to vector_search_tool.\n\n"
                 "When continuing a conversation:\n"
                 "- Identify the specific topic being discussed\n"
                 "- Include relevant details from previous exchanges\n"
@@ -93,8 +93,9 @@ def generate_response(session_id: str, user_input: str) -> str:
         print(f"  Reranked to top {len(context)} results")
 
         # Step 3: Groundedness Gate
-        # If the highest rerank score is below 0.3, we assume the document doesn't contain the answer.
-        GATE_THRESHOLD = 0.3
+        # The threshold is empirically tuned: lowest valid MongoDB query scored ~0.77, highest hallucination scored ~0.01.
+        # We set it to 0.50 to create a safe margin.
+        GATE_THRESHOLD = 0.50
         if not context or context[0].get("rerank_score", 0) < GATE_THRESHOLD:
             top_score = context[0].get("rerank_score", 0) if context else 0
             print(f"  [Groundedness Gate] Triggered. Top score ({top_score:.3f}) < {GATE_THRESHOLD}")
@@ -113,7 +114,11 @@ def generate_response(session_id: str, user_input: str) -> str:
     elif tool == "calculator_tool":
         response = calculator_tool(tool_input)
     else:
-        system_message_content = "You are a helpful assistant. Respond to the user's prompt as best as you can based on the conversation history."
+        system_message_content = (
+            "You are an enterprise AI agent strictly bounded to answering questions about MongoDB. "
+            "If the user is simply greeting you, politely greet them back and ask how you can help with MongoDB. "
+            "If they ask any factual question, politely refuse, stating you can only answer questions based on retrieved MongoDB documents."
+        )
         response = get_llm_response(llm_input, system_message_content)
 
     # Store the system response in the chat history collection
@@ -175,7 +180,9 @@ def generate_response_ui(session_id: str, user_input: str) -> dict:
             for doc in context
         ]
         
-        GATE_THRESHOLD = 0.3
+        # The threshold is empirically tuned: lowest valid MongoDB query scored ~0.77, highest hallucination scored ~0.01.
+        # We set it to 0.50 to create a safe margin.
+        GATE_THRESHOLD = 0.50
         if not context or context[0].get("rerank_score", 0) < GATE_THRESHOLD:
             ui_response["gate_passed"] = False
             ui_response["answer"] = "I don't have enough information in the provided documents to answer that."
@@ -197,7 +204,11 @@ def generate_response_ui(session_id: str, user_input: str) -> dict:
     elif tool == "calculator_tool":
         ui_response["answer"] = calculator_tool(tool_input)
     else:
-        system_message_content = "You are a helpful assistant. Respond to the user's prompt as best as you can based on the conversation history."
+        system_message_content = (
+            "You are an enterprise AI agent strictly bounded to answering questions about MongoDB. "
+            "If the user is simply greeting you, politely greet them back and ask how you can help with MongoDB. "
+            "If they ask any factual question, politely refuse, stating you can only answer questions based on retrieved MongoDB documents."
+        )
         ui_response["answer"] = get_llm_response(llm_input, system_message_content)
         
     store_chat_message(session_id, "assistant", ui_response["answer"])

@@ -20,6 +20,7 @@ function App() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId] = useState(`session-${Math.random().toString(36).substring(7)}`);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -71,6 +72,13 @@ function App() {
           <h1>Argus Agent</h1>
         </div>
         <div className="header-badges">
+          <button className="architecture-btn" onClick={() => setIsModalOpen(true)}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" stroke="currentColor" strokeWidth="2"/>
+              <path d="M12 16V12M12 8H12.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+            </svg>
+            How it Works
+          </button>
           <span className="badge">RAG</span>
           <span className="badge">Grounded</span>
         </div>
@@ -165,6 +173,58 @@ function App() {
           </button>
         </form>
       </footer>
+
+      {isModalOpen && (
+        <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <button className="close-modal" onClick={() => setIsModalOpen(false)}>×</button>
+            <h2>Argus Architecture</h2>
+            <p className="modal-subtitle">Enterprise-Grade Retrieval-Augmented Generation</p>
+            
+            <div className="architecture-steps">
+              <div className="arch-step">
+                <div className="step-number">1</div>
+                <div className="step-details">
+                  <h3>LLM Router</h3>
+                  <p>Llama 3.2 intercepts the query and semantically routes it to the correct tool (Vector Search, Calculator, or standard conversation).</p>
+                </div>
+              </div>
+              
+              <div className="arch-step">
+                <div className="step-number">2</div>
+                <div className="step-details">
+                  <h3>Hybrid Search & RRF</h3>
+                  <p>Executes both keyword search (BM25) and semantic search (Cosine Similarity) on MongoDB Atlas. Normalizes and merges results using Reciprocal Rank Fusion.</p>
+                </div>
+              </div>
+              
+              <div className="arch-step">
+                <div className="step-number">3</div>
+                <div className="step-details">
+                  <h3>Cross-Encoder Reranking</h3>
+                  <p>A Cohere cross-encoder semantically scores the top chunks against the exact user query to float the most accurate context to the absolute top.</p>
+                </div>
+              </div>
+              
+              <div className="arch-step">
+                <div className="step-number">4</div>
+                <div className="step-details">
+                  <h3>Groundedness Gate</h3>
+                  <p>Empirically tuned firewall (Threshold: 0.50). If the top retrieved chunk scores below this, the gate short-circuits the agent to guarantee zero hallucination.</p>
+                </div>
+              </div>
+
+              <div className="arch-step">
+                <div className="step-number">5</div>
+                <div className="step-details">
+                  <h3>Local Generation</h3>
+                  <p>Llama 3.2 generates the final answer strictly bounded by the gated context.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
